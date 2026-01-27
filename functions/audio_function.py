@@ -21,7 +21,8 @@ def generate_announcement_html(target, audio_announcement, announcement_type=Non
     """
     if not audio_announcement:
         return ""
-    
+    if announcement_type == None:
+        announcement_type = "미리 녹음된 오디오"
     if announcement_type == "미리 녹음된 오디오" and uploaded_audio:
         # Use uploaded audio file
         audio_path = os.path.join("uploads/audio", uploaded_audio.name)
