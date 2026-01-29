@@ -2,3 +2,5 @@
 .env
 __pycache__/
 *.pyc
+uploaded/
+uploaded_audio/
