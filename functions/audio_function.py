@@ -143,14 +143,8 @@ def generate_announcement_html_wo_tts_parameter(target, audio_announcement, anno
     """
     if not audio_announcement:
         return ""
-    if tts_parameter is None:
-        tts_rate = 0.9
-        tts_volume = 0.8
-        tts_pitch = 1.0
-        tts_engine = "gtts"
-        uploaded_audio = None
-        
-    if announcement_type == "음성화일" and uploaded_audio:
+    
+    if announcement_type == "미리 녹음된 오디오" and uploaded_audio:
         # Use uploaded audio file
         audio_path = os.path.join("uploads/audio", uploaded_audio.name)
         # Convert to base64 for embedding
