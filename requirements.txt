@@ -1,3 +1,8 @@
 streamlit
 pandas
 pytube
+gtts
+pyttsx3
+selenium
+beautifulsoup4
+requests

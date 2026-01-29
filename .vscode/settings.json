@@ -1,0 +1,60 @@
+{
+    // Keep auto-popup suggestions disabled, but enable manual suggestions
+    "editor.quickSuggestions": {
+        "other": false,
+        "comments": false,
+        "strings": false
+    },
+    "editor.suggestOnTriggerCharacters": false,
+    "editor.acceptSuggestionOnEnter": "on",
+    "editor.acceptSuggestionOnCommitCharacter": true,
+    "editor.tabCompletion": "on",
+    "editor.wordBasedSuggestions": "matchingDocuments",
+    "editor.quickSuggestionsDelay": 500,
+    
+    // Enable code analysis and linting
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "basic",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.lintOnSave": true,
+    "python.analysis.diagnosticMode": "workspace",
+    
+    // Enable IntelliSense features for manual use
+    "editor.hover.enabled": true,
+    "editor.hover.delay": 300,
+    "problems.showCurrentInStatus": true,
+    "editor.parameterHints.enabled": true,
+    "editor.parameterHints.cycle": true,
+    
+    // Enable suggestion features (manual triggering)
+    "editor.suggest.insertMode": "insert",
+    "editor.suggest.filterGraceful": true,
+    "editor.suggest.localityBonus": true,
+    "editor.suggest.shareSuggestSelections": true,
+    "editor.suggest.snippetsPreventQuickSuggestions": false,
+    "editor.suggestSelection": "recentlyUsed",
+    
+    // Enable code formatting and analysis
+    "editor.formatOnSave": true,
+    "python.formatting.provider": "autopep8",
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+    
+    // Keep Copilot disabled for now
+    "github.copilot.enable": {
+        "*": false,
+        "yaml": false,
+        "plaintext": false,
+        "markdown": false,
+        "python": false
+    },
+    "github.copilot.inlineSuggest.enable": false,
+    
+    // Enable auto-closing for better coding experience
+    "editor.autoClosingBrackets": "languageDefinition",
+    "editor.autoClosingQuotes": "languageDefinition",
+    "editor.autoSurround": "languageDefinition"
+}

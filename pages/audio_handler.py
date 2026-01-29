@@ -1,5 +1,14 @@
 import streamlit as st 
+import streamlit.components.v1
 import os
+import sys
+
+# Add the parent directory to the path so we can import functions
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
 from functions.audio_function import generate_announcement_html
 
 # Initialize session state with default values
@@ -13,6 +22,8 @@ if 'tts_volume' not in st.session_state:
     st.session_state.tts_volume = 0.8
 if 'tts_pitch' not in st.session_state:
     st.session_state.tts_pitch = 1.0
+if 'tts_engine' not in st.session_state:
+    st.session_state.tts_engine = "gtts"  # Default to gTTS for better quality
 if 'custom_announcement' not in st.session_state:
     st.session_state.custom_announcement = "Your scheduled media {title} starts playing at {date_time}"
 if 'uploaded_audio_name' not in st.session_state:
@@ -32,8 +43,8 @@ else:
 
 with st.sidebar:
     st.subheader("⚙️ Audio옵션")
-    from datetime import datetime
-    now = datetime.utcnow()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     # Audio announcement options
     st.session_state.audio_announcement = st.toggle("음성 알림", value=st.session_state.audio_announcement, help="예약된 미디어 시작 전 음성으로 안내")
     
@@ -58,6 +69,15 @@ with st.sidebar:
             
             # TTS settings
             st.markdown("**TTS 설정**")
+            
+            # TTS Engine selection
+            st.session_state.tts_engine = st.selectbox(
+                "TTS 엔진 (English text)",
+                ["gtts", "browser"],
+                index=0 if st.session_state.tts_engine == "gtts" else 1,
+                help="gTTS: Better quality for English (requires internet), Browser: Local but variable quality"
+            )
+            
             col1, col2 = st.columns(2)
             with col1:
                 st.session_state.tts_rate = st.slider("말하기 속도", 0.5, 2.0, st.session_state.tts_rate, 0.1)
@@ -106,3 +126,76 @@ with st.sidebar:
     st.caption(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S')} (KST)**")
     
 from functions.audio_function import generate_announcement_html
+
+
+# Test TTS section
+st.subheader("🔊 TTS 품질 테스트")
+if st.session_state.audio_announcement and st.session_state.announcement_type == "텍스트 음성 변환":
+    test_text = st.text_input(
+        "테스트 텍스트 (English text works best with gTTS)",
+        value="Hello, this is a test of the text-to-speech system. The scheduled media will start playing soon.",
+        help="Enter text to test the selected TTS engine"
+    )
+    
+    if st.button("🎵 TTS 테스트"):
+        if test_text.strip():
+            # Create a mock target object for testing
+            class MockTarget:
+                def __init__(self):
+                    self.title = "Test Media"
+                    from datetime import datetime
+                    self.run_at = datetime.now()
+            
+            mock_target = MockTarget()
+            
+            # Generate test HTML
+            test_html = generate_announcement_html(
+                target=mock_target,
+                audio_announcement=True,
+                announcement_type="텍스트 음성 변환",
+                custom_announcement=test_text,
+                tts_rate=st.session_state.tts_rate,
+                tts_volume=st.session_state.tts_volume,
+                tts_pitch=st.session_state.tts_pitch,
+                tts_engine=st.session_state.tts_engine
+            )
+            
+            if test_html:
+                # Display the HTML (this will play the audio)
+                st.components.v1.html(test_html, height=0)
+                if st.session_state.tts_engine == "gtts":
+                    st.success("🎵 gTTS audio generated and played! (High quality)")
+                else:
+                    st.success("🎵 Browser TTS played! (May vary by browser)")
+            else:
+                st.error("Failed to generate audio. Check your internet connection if using gTTS.")
+        else:
+            st.warning("Please enter some text to test.")
+
+st.divider()
+
+# Additional information about TTS engines
+st.subheader("📋 TTS 엔진 정보")
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("**🌐 gTTS (Google Text-to-Speech)**")
+    st.markdown("""
+    - ✅ 고품질 음성
+    - ✅ 자연스러운 발음
+    - ✅ 일관된 품질
+    - ❌ 인터넷 연결 필요
+    - ❌ 영어 텍스트에 최적화
+    """)
+
+with col2:
+    st.markdown("**🌍 Browser TTS**")
+    st.markdown("""
+    - ✅ 인터넷 연결 불필요
+    - ✅ 다양한 언어 지원
+    - ✅ 속도/높이 조절 가능
+    - ❌ 브라우저별 품질 차이
+    - ❌ 일관성 부족
+    """)
+
+st.info("💡 **추천**: 영어 텍스트의 경우 gTTS를 사용하면 더 나은 음질을 경험할 수 있습니다.")

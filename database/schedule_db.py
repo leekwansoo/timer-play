@@ -25,18 +25,32 @@ def db_init():
                 memo TEXT,
                 created_at_iso TEXT NOT NULL,
                 played INTEGER NOT NULL DEFAULT 0,
-                played_at_iso TEXT
+                played_at_iso TEXT,
+                announcement TEXT
             )
             """
         )
+        
+        # Add the announcement column if it doesn't exist (for existing databases)
+        try:
+            conn.execute("ALTER TABLE schedules ADD COLUMN announcement TEXT DEFAULT ''")
+            print("Added 'announcement' column to existing database")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                # Column already exists, that's fine
+                pass
+            else:
+                # Some other error, re-raise it
+                raise
+        
         conn.commit()
 
 def db_add(run_at: datetime, url: str, title: str, memo: str):
     with db_conn() as conn:
         conn.execute(
             """
-            INSERT INTO schedules (run_at_iso, url, title, memo, created_at_iso, played)
-            VALUES (?, ?, ?, ?, ?, 0)
+            INSERT INTO schedules (run_at_iso, url, title, memo, created_at_iso, played, announcement)
+            VALUES (?, ?, ?, ?, ?, 0, ?)
             """,
             (
                 run_at.astimezone(APP_TZ).isoformat(),
@@ -44,6 +58,7 @@ def db_add(run_at: datetime, url: str, title: str, memo: str):
                 title.strip(),
                 memo.strip(),
                 datetime.now(APP_TZ).isoformat(),
+                "",
             ),
         )
         conn.commit()
@@ -52,7 +67,7 @@ def db_list():
     with db_conn() as conn:
         cur = conn.execute(
             """
-            SELECT id, run_at_iso, url, title, memo, created_at_iso, played, played_at_iso
+            SELECT id, run_at_iso, url, title, memo, created_at_iso, played, played_at_iso, announcement
             FROM schedules
             ORDER BY run_at_iso ASC
             """
@@ -102,9 +117,10 @@ class Schedule:
     created_at: datetime
     played: bool
     played_at: datetime | None
+    announcement: str
     
 def to_schedule(row) -> Schedule:
-    (sid, run_at_iso, url, title, memo, created_iso, played, played_at_iso) = row
+    (sid, run_at_iso, url, title, memo, created_iso, played, played_at_iso, announcement) = row
     run_at = datetime.fromisoformat(run_at_iso).astimezone(APP_TZ)
     created_at = datetime.fromisoformat(created_iso).astimezone(APP_TZ)
     played_at = datetime.fromisoformat(played_at_iso).astimezone(APP_TZ) if played_at_iso else None
@@ -117,6 +133,7 @@ def to_schedule(row) -> Schedule:
         created_at=created_at,
         played=bool(played),
         played_at=played_at,
+        announcement =  announcement or "",
     )
 
 def find_due_schedules(schedules: list[Schedule], now: datetime, window_seconds: int = 60) -> list[Schedule]:

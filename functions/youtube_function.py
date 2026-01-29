@@ -160,3 +160,41 @@ def build_youtube_embed_with_completion_html(video_id: str, target_id: int, auto
     </script>
     """
     return html
+
+def extract_naver_mybox_file_id(url: str) -> str | None:
+    """
+    Extract file ID from Naver MyBox URL
+    
+    Supports:
+      - https://naver.me/FILE_ID
+    """
+    if not url:
+        return None
+    
+    # /naver.me/FILE_ID format
+    match = re.search(r'naver\.me/([a-zA-Z0-9-_]+)', url)
+    if match:
+        return match.group(1)
+    
+    return None
+
+def build_naver_mybox_embed_html(file_id: str) -> str:
+    """
+    Build HTML for Naver MyBox file embed
+    
+    Args:
+        file_id: Naver MyBox file ID
+    """
+    embed_url = f"https://naver.me/{file_id}"
+    
+    html = f"""
+    <div style="position:relative;width:100%;padding-top:56.25%;">
+        <iframe
+            src="{embed_url}"
+            style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;"
+            allow="autoplay"
+            allowfullscreen
+        ></iframe>
+    </div>
+    """
+    return html

@@ -1,36 +1,26 @@
 # pip install streamlit
 import re
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
-import webbrowser
 
 APP_TZ = ZoneInfo("Asia/Seoul")
 # DB_PATH = "schedule.db"
-from database.schedule_db import (
-    db_conn,
-    db_init,
-    db_add,
-    db_list,
-    db_mark_played,
-    db_reset_played,
-    db_delete,
-    Schedule,
-    to_schedule,
-    find_due_schedules,
-)
+from database.schedule_db import (Schedule, db_add, db_conn, db_delete,
+                                  db_init, db_list, db_mark_played,
+                                  db_reset_played, find_due_schedules,
+                                  to_schedule)
+from functions.audio_function import generate_announcement_html
 from functions.youtube_function import (
-    extract_youtube_video_id,
-    build_youtube_embed_html,
-    extract_google_drive_file_id,
-    build_google_drive_embed_html,
-    build_youtube_embed_with_completion_html,
-)
-from functions.audio_function import (
-    generate_announcement_html,
-)
+    build_google_drive_embed_html, build_naver_mybox_embed_html,
+    build_youtube_embed_html, build_youtube_embed_with_completion_html,
+    extract_google_drive_file_id, extract_naver_mybox_file_id,
+    extract_youtube_video_id)
 
 # Initialize TTS variables with default values
 tts_rate = 0.9
@@ -49,6 +39,7 @@ def create_repeat_schedules(initial_run_at: datetime, url: str, title: str, memo
         title: Schedule title
         memo: Schedule memo
         repeat_option: "hourly", "daily", or "weekly"
+        announcement_option: "None", "Text", or "Audio_file"
     
     Returns:
         Always returns 0 (no additional schedules created)
@@ -137,17 +128,40 @@ def update_repeat_schedule(schedule_id: int, repeat_option: str):
             # Debug: Print the update
             print(f"Updated schedule {schedule_id}: {current_run_at} -> {next_run_at} (repeat: {repeat_option})")
 
+def activate_announcement(announcement):
+    print("announcement activated for")
+    announcement_type = announcement
+    custom_announcement = st.session_state.get('custom_announcement', "Your scheduled media {title} starts playing at {date_time}")
+    
+    # Handle uploaded audio from session state
+    uploaded_audio = None
+    if st.session_state.get('uploaded_audio_name') and st.session_state.get('uploaded_audio_path'):
+        # Create a simple mock object with name attribute for audio_function compatibility
+        class MockAudioFile:
+            def __init__(self, name):
+                self.name = name
+        uploaded_audio = MockAudioFile(st.session_state.uploaded_audio_name)
+        
+    
+    # Add audio announcement
+    announcement_html = generate_announcement_html(
+        target,
+        announcement_type,
+        custom_announcement=custom_announcement if announcement_type == "텍스트" else None,
+        uploaded_audio=uploaded_audio if announcement_type == "음성화일" else None
+    )
+    if announcement_html:
+        st.components.v1.html(announcement_html, height=0)
+    
 st.set_page_config(page_title="예약 YouTube 자동 재생", layout="wide")
 db_init()
 st.title("⏰ 예약 시간에 YouTube 자동 재생 (Streamlit)")
 now = datetime.now(APP_TZ)
 with st.sidebar:
     st.subheader("⚙️ 옵션")
-    auto_refresh = st.toggle("5초마다 자동 새로고침", value=True)
+    auto_refresh = st.toggle("10초마다 자동 새로고침", value=True)
     autoplay = st.toggle("자동재생 시도(autoplay=1)", value=True)
     mute = st.toggle("음소거(mute=1)로 재생", value=False, help="브라우저 자동재생 제한 때문에 권장")
-    
-    
     
     window = st.slider("재생 허용 범위(±초)", min_value=10, max_value=120, value=60, step=5)
     st.caption(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S')} (KST)**")
@@ -161,7 +175,7 @@ with st.sidebar:
     )
    
 if auto_refresh:
-    st_autorefresh(interval=5000, key="autorefresh_5s")
+    st_autorefresh(interval=10000, key="autorefresh_10s")
 # Load schedules
 rows = db_list()
 schedules = [to_schedule(r) for r in rows]
@@ -177,12 +191,16 @@ if due:
     # Determine content type based on URL
     if target.url.startswith("uploaded_file:"):
         content_type = "uploaded"
+        print(content_type)
     elif "youtube.com" in target.url or "youtu.be" in target.url:
         content_type = "youtube"
+        print(content_type)
     elif "drive.google.com" in target.url or "docs.google.com" in target.url:
         content_type = "google_drive"
+        print(content_type)
     else:
         content_type = "other"
+        print(content_type)
     
     # Process based on content type
     if content_type == "uploaded":
@@ -196,35 +214,10 @@ if due:
         if target.memo:
             st.info(target.memo)
         
-        # Get audio settings from session state with defaults
-        audio_announcement = st.session_state.get('audio_announcement', True)
-        announcement_type = st.session_state.get('announcement_type', "텍스트 음성 변환")
-        custom_announcement = st.session_state.get('custom_announcement', "Your scheduled media {title} starts playing at {date_time}")
-        tts_rate = st.session_state.get('tts_rate', 0.9)
-        tts_volume = st.session_state.get('tts_volume', 0.8)
-        tts_pitch = st.session_state.get('tts_pitch', 1.0)
-        
-        # Handle uploaded audio from session state
-        uploaded_audio = None
-        if st.session_state.get('uploaded_audio_name') and st.session_state.get('uploaded_audio_path'):
-            # Create a simple mock object with name attribute for audio_function compatibility
-            class MockAudioFile:
-                def __init__(self, name):
-                    self.name = name
-            uploaded_audio = MockAudioFile(st.session_state.uploaded_audio_name)
-        
-        # Add audio announcement
-        announcement_html = generate_announcement_html(
-            target, audio_announcement, 
-            announcement_type=announcement_type if audio_announcement else None,
-            custom_announcement=custom_announcement if audio_announcement and announcement_type == "텍스트 음성 변환" else None,
-            tts_rate=tts_rate if audio_announcement and announcement_type == "텍스트 음성 변환" else 0.9,
-            tts_volume=tts_volume if audio_announcement else 0.8,
-            tts_pitch=tts_pitch if audio_announcement and announcement_type == "텍스트 음성 변환" else 1.0,
-            uploaded_audio=uploaded_audio if audio_announcement and announcement_type == "미리 녹음된 오디오" else None
-        )
-        if announcement_html:
-            st.components.v1.html(announcement_html, height=0)
+        print(target.announcement)
+        announcement = target.announcement
+        if announcement != "None":
+            activate_announcement(announcement)
         
         st.video(f"uploads/{file_name}", start_time=0)
         
@@ -264,33 +257,12 @@ if due:
             if target.memo:
                 st.info(target.memo)
                     # Get audio settings from session state with defaults
-        audio_announcement = st.session_state.get('audio_announcement', True)
-        announcement_type = st.session_state.get('announcement_type', "텍스트 음성 변환")
-        custom_announcement = st.session_state.get('custom_announcement', "Your scheduled media {title} starts playing at {date_time}")
-        tts_rate = st.session_state.get('tts_rate', 0.9)
-        tts_volume = st.session_state.get('tts_volume', 0.8)
-        tts_pitch = st.session_state.get('tts_pitch', 1.0)
-        
-        # Handle uploaded audio from session state
-        uploaded_audio = None
-        if st.session_state.get('uploaded_audio_name') and st.session_state.get('uploaded_audio_path'):
-            # Create a simple mock object with name attribute for audio_function compatibility
-            class MockAudioFile:
-                def __init__(self, name):
-                    self.name = name
-            uploaded_audio = MockAudioFile(st.session_state.uploaded_audio_name)
-                    # Add audio announcement
-        announcement_html = generate_announcement_html(
-            target, audio_announcement,
-            announcement_type=announcement_type if audio_announcement else None,
-            custom_announcement=custom_announcement if audio_announcement and announcement_type == "텍스트 음성 변환" else None,
-            tts_rate=tts_rate if audio_announcement and announcement_type == "텍스트 음성 변환" else 0.9,
-            tts_volume=tts_volume if audio_announcement else 0.8,
-            tts_pitch=tts_pitch if audio_announcement and announcement_type == "텍스트 음성 변환" else 1.0,
-            uploaded_audio=uploaded_audio if audio_announcement and announcement_type == "미리 녹음된 오디오" else None
-        )
-        if announcement_html:
-            st.components.v1.html(announcement_html, height=0)
+                    
+        print(target.announcement)
+        announcement = target.announcement
+        if announcement != "None":
+            # Get audio settings from session state with defaults
+            activate_announcement(announcement)
         
         if vid:
             # Create YouTube embed with automatic completion detection
@@ -342,36 +314,10 @@ if due:
         if target.memo:
             st.info(target.memo)
         
-        # Get audio settings from session state with defaults
-        audio_announcement = st.session_state.get('audio_announcement', True)
-        announcement_type = st.session_state.get('announcement_type', "텍스트 음성 변환")
-        custom_announcement = st.session_state.get('custom_announcement', "Your scheduled media {title} starts playing at {date_time}")
-        tts_rate = st.session_state.get('tts_rate', 0.9)
-        tts_volume = st.session_state.get('tts_volume', 0.8)
-        tts_pitch = st.session_state.get('tts_pitch', 1.0)
-        
-        # Handle uploaded audio from session state
-        uploaded_audio = None
-        if st.session_state.get('uploaded_audio_name') and st.session_state.get('uploaded_audio_path'):
-            # Create a simple mock object with name attribute for audio_function compatibility
-            class MockAudioFile:
-                def __init__(self, name):
-                    self.name = name
-            uploaded_audio = MockAudioFile(st.session_state.uploaded_audio_name)
-        
-        # Add audio announcement
-        announcement_html = generate_announcement_html(
-            target, audio_announcement,
-            announcement_type=announcement_type if audio_announcement else None,
-            custom_announcement=custom_announcement if audio_announcement and announcement_type == "텍스트 음성 변환" else None,
-            tts_rate=tts_rate if audio_announcement and announcement_type == "텍스트 음성 변환" else 0.9,
-            tts_volume=tts_volume if audio_announcement else 0.8,
-            tts_pitch=tts_pitch if audio_announcement and announcement_type == "텍스트 음성 변환" else 1.0,
-            uploaded_audio=uploaded_audio if audio_announcement and announcement_type == "미리 녹음된 오디오" else None
-        )
-        if announcement_html:
-            st.components.v1.html(announcement_html, height=0)
-        
+        print(target.announcement)
+        announcement = target.announcement
+        if announcement is not None:
+            activate_announcement(announcement)
         # Extract file ID from Google Drive URL and create embed
         file_id = extract_google_drive_file_id(target.url)
         
@@ -464,8 +410,37 @@ with st.form("add_schedule", clear_on_submit=True):
         else:
             url = st.text_input("동영상 URL (YouTube)", placeholder="https://www.youtube.com/watch?v=... (또는 사이드바에서 파일 업로드)")
     
-    # Add repeat options field
-    repeat_display = st.radio("반복 옵션", options=["반복 안함", "매시간", "매일", "매주"], horizontal=True)
+    # Add repeat and announcementoptions field
+    c1, c2 = st.columns(2)
+    with c1:
+        repeat_display = st.radio("반복 옵션", options=["반복 안함", "매시간", "매일", "매주"], horizontal=True)
+        # Map display values back to internal values
+        repeat_option = {"반복 안함": "none", "매시간": "hourly", "매일": "daily", "매주": "weekly"}[repeat_display]
+    with c2:
+        announcement = st.radio(
+            "알림음 타입", options=["None","텍스트", "음성화일"],
+            horizontal = True
+        )
+        if announcement == "None":
+            pass
+        if announcement == "텍스트":
+            custom_announcement = st.text_area(
+                    "맞춤 알림문구",
+                    value="Your scheduled media {title} starts playing at {date_time}",
+                    help="문구 내에 {title}, {date_time}을 사용하여 자동 대체 가능"
+                )
+        if announcement == "음성화일":  
+            
+            # Pre-recorded audio
+            uploaded_audio = st.file_uploader(
+                "오디오 파일 업로드 (.mp3, .wav, .ogg)",
+                type=['mp3', 'wav', 'ogg'],
+                help="업로드된 오디오가 알림음으로 재생됩니다"
+            )
+            
+            if uploaded_audio:
+                # Store audio file information in session state
+                    st.session_state.uploaded_audio_name = uploaded_audio.name
     # Map display values back to internal values
     repeat_option = {"반복 안함": "none", "매시간": "hourly", "매일": "daily", "매주": "weekly"}[repeat_display]
     
@@ -517,8 +492,8 @@ st.markdown("---")
 st.subheader("📋 등록된 일정 테이블")
 
 # Table header
-header_cols = st.columns([0.5, 1.5, 1, 1.5, 1, 0.75, 0.8, 0.4, 0.4, 0.4])
-headers = ["ID", "예정시간(KST)", "제목", "URL", "메모", "재생여부", "반복옵션", "재생", "편집", "삭제"]
+header_cols = st.columns([0.5, 1.5, 1, 1.5, 1, 0.75, 0.8, 0.4, 0.4, 0.4, 0.4])
+headers = ["ID", "예정시간(KST)", "제목", "URL", "메모", "재생여부", "반복옵션", "알림", "재생", "편집", "삭제"]
 for col, header in zip(header_cols, headers):
     with col:
         st.write(f"**{header}**")
@@ -527,7 +502,7 @@ st.markdown("---")
 
 # Table rows with buttons
 for i, s in enumerate(schedules):
-    cols = st.columns([0.5, 1.5, 1, 1.5, 1, 0.75, 0.8, 0.4, 0.4, 0.4])
+    cols = st.columns([0.5, 1.5, 1, 1.5, 1, 0.75, 0.8, 0.4, 0.4, 0.4, 0.4])
     
     with cols[0]:  # ID
         st.write(s.id)
@@ -567,17 +542,21 @@ for i, s in enumerate(schedules):
         else:
             repeat_text = "반복 안함"
         st.write(repeat_text)
-    with cols[7]:  # 재생 버튼
+    with cols[7]:  # 알림음
+        알림 = s.announcement
+        st.write(알림)
+        
+    with cols[8]:  # 재생 버튼
         if st.button("▶️", key=f"play_{s.id}_{i}", help="재생", use_container_width=True):
             # Play the video
             st.session_state[f"playing_{s.id}"] = True
             st.rerun()
-    with cols[8]:  # 편집 버튼
+    with cols[9]:  # 편집 버튼
         if st.button("✏️", key=f"edit_{s.id}_{i}", help="편집", use_container_width=True):
             # Set edit mode for this schedule
             st.session_state[f"editing_{s.id}"] = True
             st.rerun()
-    with cols[9]:  # 삭제 버튼
+    with cols[10]:  # 삭제 버튼
         if st.button("🗑️", key=f"del_{s.id}_{i}", help="삭제", use_container_width=True):
             db_delete(s.id)
             st.success(f"ID {s.id} 삭제했어요.")
@@ -608,9 +587,45 @@ for i, s in enumerate(schedules):
                 current_repeat_display = repeat_mapping.get(current_repeat_option, "반복 안함")
                 current_index = repeat_options.index(current_repeat_display)
                 
-                edit_repeat_display = st.radio("반복 옵션", options=repeat_options, 
-                                             index=current_index, horizontal=True, 
-                                             key=f"edit_repeat_{s.id}")
+                # Add repeat and announcement options in two columns (same layout as add form)
+                c1, c2 = st.columns(2)
+                with c1:
+                    edit_repeat_display = st.radio("반복 옵션", options=repeat_options, 
+                                                 index=current_index, horizontal=True, 
+                                                 key=f"edit_repeat_{s.id}")
+                with c2:
+                    # Add announcement field to edit form
+                    current_announcement = s.announcement or "None"
+                    # Map database values to display values
+                    announce_options = ["None", "텍스트", "음성화일"]
+                    try:
+                        announce_index = announce_options.index(current_announcement)
+                    except ValueError:
+                        announce_index = 0  # Default to "None" if invalid value
+                        
+                    edit_announcement = st.radio(
+                        "알림음 타입", options=announce_options,
+                        index=announce_index, horizontal=True, key=f"edit_announce_{s.id}"
+                    )
+                
+                # Show announcement-specific fields
+                edit_custom_announcement = None
+                edit_uploaded_audio = None
+                
+                if edit_announcement == "텍스트":
+                    edit_custom_announcement = st.text_area(
+                        "맞춤 알림문구",
+                        value="Your scheduled media {title} starts playing at {date_time}",
+                        help="문구 내에 {title}, {date_time}을 사용하여 자동 대체 가능",
+                        key=f"edit_custom_announce_{s.id}"
+                    )
+                elif edit_announcement == "음성화일":
+                    edit_uploaded_audio = st.file_uploader(
+                        "오디오 파일 업로드 (.mp3, .wav, .ogg)",
+                        type=['mp3', 'wav', 'ogg'],
+                        help="업로드된 오디오가 알림음으로 재생됩니다",
+                        key=f"edit_audio_{s.id}"
+                    )
                 
                 edit_title = st.text_input("제목", value=s.title or "", key=f"edit_title_{s.id}")
                 edit_url = st.text_input("URL", value=s.url or "", key=f"edit_url_{s.id}")
@@ -644,10 +659,10 @@ for i, s in enumerate(schedules):
                                 conn.execute(
                                     """
                                     UPDATE schedules 
-                                    SET run_at_iso = ?, title = ?, url = ?, memo = ?
+                                    SET run_at_iso = ?, title = ?, url = ?, memo = ?, announcement = ?
                                     WHERE id = ?
                                     """,
-                                    (new_run_at.isoformat(), edit_title, edit_url, final_memo, s.id)
+                                    (new_run_at.isoformat(), edit_title, edit_url, final_memo, edit_announcement, s.id)
                                 )
                                 conn.commit()
                             
